@@ -1,1 +1,2 @@
-# poc_core
+# @waponder/core
+

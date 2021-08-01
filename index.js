@@ -1,0 +1,5 @@
+'use_strict'
+
+;(async () => {
+
+})()
