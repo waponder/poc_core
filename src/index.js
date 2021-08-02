@@ -3,15 +3,15 @@
 const crypto = require('crypto')
 const { nanoid } = require('nanoid')
 const WebSocket = require('ws')
-const { generateKeyPair } = require('curve25519-js')
+const curve25519 = require('curve25519-js')
 const qrcode = require('qrcode-terminal')
 
 const { headers, origin, whatswebBrowser, whatswebVersion, zapurl } = require('./constants')
 
-const clientId = crypto.randomBytes(16).toString('base64')
+const clientID = crypto.randomBytes(16).toString('base64')
 const messageTag = nanoid()
 const notincognito = true
-const cmd = JSON.stringify(['admin', 'init', whatswebVersion, whatswebBrowser, clientId, notincognito])
+const cmd = JSON.stringify(['admin', 'init', whatswebVersion, whatswebBrowser, clientID, notincognito])
 const bread = {
   init: `${messageTag},${cmd}`
 }
@@ -24,6 +24,7 @@ const wsc = new WebSocket(zapurl, {
 wsc.once('open', el => {
   console.log('open')
 
+  // autostart
   wsc.send(bread.init)
 })
 wsc.on('close', el => {
@@ -33,16 +34,20 @@ wsc.on('error', el => {
   console.log('error')
 })
 wsc.on('message', el => {
-  console.log('message')
+  console.log(`message ${el}`)
   const tagback = el.toString().slice(0, messageTag.length)
   const bodyback = el.toString().slice(messageTag.length + 1)
   if (tagback === messageTag) {
     const { status, ref, ttl, update, curr, time } = JSON.parse(bodyback)
     console.dir({ status, ref, ttl, update, curr, time })
+
     const seed = crypto.randomBytes(32)
-    const key = generateKeyPair(seed)
-    const publickey = Buffer.from(key.public).toString('base64')
-    const code = `${ref},${publickey},${clientId}`
+    const curveKeys = curve25519.generateKeyPair(seed)
+    const publicKey = Buffer.from(curveKeys.public).toString('base64')
+    const privateKey = Buffer.from(curveKeys.private).toString('base64')
+    console.dir({ publicKey, privateKey })
+
+    const code = [ref, publicKey, clientID].join(',')
     qrcode.generate(code, { small: true })
   }
 })
@@ -59,3 +64,6 @@ wsc.on('unexpected-response', el => {
 wsc.on('upgrade', el => {
   console.log('upgrade')
 })
+
+// https://github.com/sigalor/whatsapp-web-multi-device-reveng/blob/main/pocs/poc01_generate_qr.md#:~:text=%5B%22Cmd%22%2C%7B%22type%22%3A%22upgrade_md_prod%22%2C%22version%22%3A%222.2126.11%22%7D%5D
+// ["Cmd",{"type":"upgrade_md_prod","version":"2.2126.11"}]
