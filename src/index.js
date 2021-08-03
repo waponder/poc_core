@@ -1,99 +1,149 @@
-'use_strict'
-
 const crypto = require('crypto')
 const WebSocket = require('ws')
 const curve25519 = require('curve25519-js')
+const HKDF = require('futoin-hkdf')
 const qrcode = require('qrcode-terminal')
 
 const { adminTestInterval, headers, origin, whatswebBrowser, whatswebVersion, keepAliveInterval, zapurl } = require('./constants')
 const logger = require('./logger')
 
+let curveKeys
+let authInfo
 const clientId = crypto.randomBytes(16).toString('base64')
-
 const inittag = crypto.randomBytes(16).toString('base64')
-const clientID = crypto.randomBytes(16).toString('base64')
-const notincognito = true
-const cmd = JSON.stringify(['admin', 'init', whatswebVersion, whatswebBrowser, clientID, notincognito])
-const bread = {
-  init: `${inittag},${cmd}`,
-  keepalive: '?,,',
-  admintest: () => `${crypto.randomBytes(16).toString('base64')},${JSON.stringify(['admin', 'test'])}`
-}
 
-const wsc = new WebSocket(zapurl, {
+const WSC = new WebSocket(zapurl, {
   origin,
   headers
 })
 
-logger.log('info', `inittag=${inittag}`)
-const tagbag = new Map()
-
-wsc.once('open', el => {
-  logger.log('info', 'open')
-
-  // keepAlive
-  setInterval(async () => {
-    wsc.send(bread.keepalive)
-  }, keepAliveInterval)
-  // admintest
-  setTimeout(() => {
-    setInterval(() => {
-      wsc.send(bread.admintest())
-    }, adminTestInterval)
-  }, 10_000)
-
-  // autostart
-  tagbag.set(inittag, ({
-    handler: ({ wason: { status, ref, ttl, update, curr, time } }) => {
-      tagbag.delete(inittag)
-
-      const seed = crypto.randomBytes(32)
-      const keys = curve25519.generateKeyPair(seed)
-      const publickey = Buffer.from(keys.public).toString('base64')
-      const code = `${ref},${publickey},${clientId}`
-
-      qrcode.generate(code, { small: true })
-    }
-  }))
-  wsc.send(bread.init)
-})
-
-wsc.on('message', el => {
-  logger.log('info', 'message')
-  const tag = el.slice(0, el.indexOf(',')).toString()
+WSC.on('message', el => {
+  logger.log('info', 'w message')
+  const mtag = el.slice(0, el.indexOf(',')).toString()
   let wason
   let wabin
   try {
     wason = JSON.parse(el.slice(el.indexOf(',') + 1))
-    logger.log('info', wason)
+    // // logger.log('info', wason)
   } catch {
     wabin = el.slice(el.indexOf(',') + 1)
-    // logger.log('info', wabin)
+    // // logger.log('info', wabin)
   }
 
-  if (tagbag.has(tag)) {
-    const { handler } = tagbag.get(tag)
-    handler({ wason, wabin })
-  } else {
-    logger.log('info', `no tagbag for ${tag}`)
+  switch (mtag) {
+    case inittag:
+      logger.log('info', 'inittag')
+      curveKeys = curve25519.generateKeyPair(crypto.randomBytes(32))
+      qrcode.generate(`${wason.ref},${Buffer.from(curveKeys.public).toString('base64')},${clientId}`, { small: true })
+      break
+    case 's1':
+      if (Array.isArray(wason) && wason.length === 2 && wason[0] === 'Conn') {
+        const {
+          ref,
+          wid,
+          connected,
+          isResponse,
+          serverToken,
+          browserToken,
+          clientToken,
+          lc,
+          lg,
+          locales,
+          is24h,
+          secret,
+          protoVersion,
+          binVersion,
+          battery,
+          plugged,
+          platform,
+          features,
+          phone,
+          pushname,
+          tos
+        } = wason[1]
+
+        // OPA CONN
+        logger.log('info', 'OPA CONN')
+        const secret64 = Buffer.from(secret, 'base64')
+        const sharedKey = curve25519.sharedKey(curveKeys.private, secret64.slice(0, 32))
+
+        const expandedKey = HKDF(sharedKey, 80, { salt: Buffer.alloc(32), info: null, hash: 'SHA-256' })
+
+        const hmacValidationMessage = Buffer.concat([
+          secret64.slice(0, 32),
+          secret64.slice(64, secret64.length)
+        ])
+        const hmacValidationKey = expandedKey.slice(32, 64)
+
+        const hmac = crypto.createHmac('sha256', hmacValidationKey).update(hmacValidationMessage).digest()
+
+        if (hmac.equals(secret64.slice(32, 64))) {
+          // DEU BOM
+          logger.log('info', 'DEU BOM')
+        }
+
+        const encryptedAESKeys = Buffer.concat([
+          expandedKey.slice(64, expandedKey.length),
+          secret64.slice(64, secret64.length)
+        ])
+
+        const aes = crypto.createDecipheriv('aes-256-cbc', expandedKey.slice(0, 32), encryptedAESKeys.slice(0, 16))
+        const decryptedKeys = Buffer.concat([aes.update(encryptedAESKeys.slice(16, encryptedAESKeys.length)), aes.final()])
+
+        authInfo = {
+          encKey: decryptedKeys.slice(0, 32),
+          macKey: decryptedKeys.slice(32, 64),
+          clientToken,
+          serverToken,
+          clientId
+        }
+
+        const authInfo64 = {
+          ...authInfo,
+          encKey: authInfo.encKey.toString('base64'),
+          macKey: authInfo.macKey.toString('base64')
+        }
+        // AUTH INFO
+        logger.log('info', authInfo64)
+      }
+      break
+    case 's2':
+    case 's3':
+    case 's4':
+      logger.log('info', el.toString())
+      break
+    default:
+      logger.log('info', `<-- ${mtag}`)
   }
 })
 
-wsc.on('close', el => {
-  logger.log('info', 'close')
+WSC.once('open', el => {
+  logger.log('info', 'w open')
+
+  // autostart
+  const notincognito = true
+  const cmd = JSON.stringify(['admin', 'init', whatswebVersion, whatswebBrowser, clientId, notincognito])
+  const initcmd = `${inittag},${cmd}`
+  logger.log('info', `--> ${initcmd}`)
+
+  WSC.send(initcmd)
 })
-wsc.on('error', el => {
-  logger.log('info', 'error')
+
+WSC.on('close', el => {
+  logger.log('info', 'w close')
 })
-wsc.on('ping', el => {
-  logger.log('info', 'ping')
+WSC.on('error', el => {
+  logger.log('info', 'w error')
 })
-wsc.on('pong', el => {
-  logger.log('info', 'pong')
+WSC.on('ping', el => {
+  logger.log('info', 'w ping')
 })
-wsc.on('unexpected-response', el => {
-  logger.log('info', 'unexpected-response')
+WSC.on('pong', el => {
+  logger.log('info', 'w pong')
 })
-wsc.on('upgrade', el => {
-  logger.log('info', 'upgrade')
+WSC.on('unexpected-response', el => {
+  logger.log('info', 'w unexpected-response')
+})
+WSC.on('upgrade', el => {
+  logger.log('info', 'w upgrade')
 })

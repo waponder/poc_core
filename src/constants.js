@@ -1,4 +1,4 @@
-const whatswebVersion = [2, 2126, 11]
+const whatswebVersion = [2, 2126, 14]
 const whatswebBrowser = ['Baileys', 'Chrome', '3.5.1']
 const zapurl = 'wss://web.whatsapp.com/ws'
 const origin = 'https://web.whatsapp.com'
