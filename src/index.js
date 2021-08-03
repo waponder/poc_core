@@ -5,16 +5,18 @@ const WebSocket = require('ws')
 const curve25519 = require('curve25519-js')
 const qrcode = require('qrcode-terminal')
 
-const { headers, origin, whatswebBrowser, whatswebVersion, zapurl } = require('./constants')
+const { adminTestInterval, headers, origin, whatswebBrowser, whatswebVersion, keepAliveInterval, zapurl } = require('./constants')
 
 const clientId = crypto.randomBytes(16).toString('base64')
 
-const messageTag = crypto.randomBytes(16).toString('base64')
+const inittag = crypto.randomBytes(16).toString('base64')
 const clientID = crypto.randomBytes(16).toString('base64')
 const notincognito = true
 const cmd = JSON.stringify(['admin', 'init', whatswebVersion, whatswebBrowser, clientID, notincognito])
 const bread = {
-  init: `${messageTag},${cmd}`
+  init: `${inittag},${cmd}`,
+  keepalive: '?,,',
+  admintest: () => `${crypto.randomBytes(16).toString('base64')},${JSON.stringify(['admin', 'test'])}`
 }
 
 const wsc = new WebSocket(zapurl, {
@@ -22,45 +24,63 @@ const wsc = new WebSocket(zapurl, {
   headers
 })
 
+console.log(`inittag=${inittag}`)
 const tagbag = new Map()
 
 wsc.once('open', el => {
   console.log('open')
 
+  // keepAlive
+  setInterval(async () => {
+    wsc.send(bread.keepalive)
+  }, keepAliveInterval)
+  // admintest
+  setTimeout(() => {
+    setInterval(() => {
+      wsc.send(bread.admintest())
+    }, adminTestInterval)
+  }, 10_000)
+
   // autostart
+  tagbag.set(inittag, ({
+    handler: ({ wason: { status, ref, ttl, update, curr, time } }) => {
+      tagbag.delete(inittag)
+
+      const seed = crypto.randomBytes(32)
+      const keys = curve25519.generateKeyPair(seed)
+      const publickey = Buffer.from(keys.public).toString('base64')
+      const code = `${ref},${publickey},${clientId}`
+
+      qrcode.generate(code, { small: true })
+    }
+  }))
   wsc.send(bread.init)
-  tagbag.set(messageTag, wason => {
-    const { status, ref, ttl, update, curr, time } = JSON.parse(wason)
-    tagbag.delete(messageTag)
-    console.dir({ status, ref, ttl, update, curr, time })
-
-    const seed = crypto.randomBytes(32)
-    const keys = curve25519.generateKeyPair(seed)
-    const publickey = Buffer.from(keys.public).toString('base64')
-    const code = `${ref},${publickey},${clientId}`
-
-    qrcode.generate(code, { small: true })
-  })
 })
+
+wsc.on('message', el => {
+  const tag = el.slice(0, el.indexOf(',')).toString()
+  let wason
+  let wabin
+  try {
+    wason = JSON.parse(el.slice(el.indexOf(',') + 1))
+  } catch {
+    wabin = el.slice(el.indexOf(',') + 1)
+  }
+
+  if (tagbag.has(tag)) {
+    const { handler } = tagbag.get(tag)
+    handler({ wason, wabin })
+  } else {
+    console.log(`no tagbag for ${tag}`)
+  }
+})
+
 wsc.on('close', el => {
   console.log('close')
 })
 wsc.on('error', el => {
   console.log('error')
 })
-wsc.on('message', el => {
-  console.log('message')
-  const tag = el.slice(0, el.indexOf(','))
-  const wason = JSON.parse(el.slice(el.indexOf(',')) + 1)
-
-  if (tagbag.has(tag)) {
-    const { callback } = tagbag.get(tag)
-    callback(wason)
-  } else {
-    console.log(`no handler ${tag}`)
-  }
-})
-
 wsc.on('ping', el => {
   console.log('ping')
 })
