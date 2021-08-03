@@ -6,6 +6,7 @@ const curve25519 = require('curve25519-js')
 const qrcode = require('qrcode-terminal')
 
 const { adminTestInterval, headers, origin, whatswebBrowser, whatswebVersion, keepAliveInterval, zapurl } = require('./constants')
+const logger = require('./logger')
 
 const clientId = crypto.randomBytes(16).toString('base64')
 
@@ -24,11 +25,11 @@ const wsc = new WebSocket(zapurl, {
   headers
 })
 
-console.log(`inittag=${inittag}`)
+logger.log('info', `inittag=${inittag}`)
 const tagbag = new Map()
 
 wsc.once('open', el => {
-  console.log('open')
+  logger.log('info', 'open')
 
   // keepAlive
   setInterval(async () => {
@@ -58,38 +59,41 @@ wsc.once('open', el => {
 })
 
 wsc.on('message', el => {
+  logger.log('info', 'message')
   const tag = el.slice(0, el.indexOf(',')).toString()
   let wason
   let wabin
   try {
     wason = JSON.parse(el.slice(el.indexOf(',') + 1))
+    logger.log('info', wason)
   } catch {
     wabin = el.slice(el.indexOf(',') + 1)
+    // logger.log('info', wabin)
   }
 
   if (tagbag.has(tag)) {
     const { handler } = tagbag.get(tag)
     handler({ wason, wabin })
   } else {
-    console.log(`no tagbag for ${tag}`)
+    logger.log('info', `no tagbag for ${tag}`)
   }
 })
 
 wsc.on('close', el => {
-  console.log('close')
+  logger.log('info', 'close')
 })
 wsc.on('error', el => {
-  console.log('error')
+  logger.log('info', 'error')
 })
 wsc.on('ping', el => {
-  console.log('ping')
+  logger.log('info', 'ping')
 })
 wsc.on('pong', el => {
-  console.log('pong')
+  logger.log('info', 'pong')
 })
 wsc.on('unexpected-response', el => {
-  console.log('unexpected-response')
+  logger.log('info', 'unexpected-response')
 })
 wsc.on('upgrade', el => {
-  console.log('upgrade')
+  logger.log('info', 'upgrade')
 })
