@@ -2,7 +2,7 @@
 
 const crypto = require('crypto')
 const WebSocket = require('ws')
-const { generateKeyPair } = require('curve25519-js')
+const curve25519 = require('curve25519-js')
 const qrcode = require('qrcode-terminal')
 
 const { headers, origin, whatswebBrowser, whatswebVersion, zapurl } = require('./constants')
@@ -10,8 +10,9 @@ const { headers, origin, whatswebBrowser, whatswebVersion, zapurl } = require('.
 const clientId = crypto.randomBytes(16).toString('base64')
 
 const messageTag = crypto.randomBytes(16).toString('base64')
+const clientID = crypto.randomBytes(16).toString('base64')
 const notincognito = true
-const cmd = JSON.stringify(['admin', 'init', whatswebVersion, whatswebBrowser, clientId, notincognito])
+const cmd = JSON.stringify(['admin', 'init', whatswebVersion, whatswebBrowser, clientID, notincognito])
 const bread = {
   init: `${messageTag},${cmd}`
 }
@@ -26,6 +27,7 @@ const tagbag = new Map()
 wsc.once('open', el => {
   console.log('open')
 
+  // autostart
   wsc.send(bread.init)
   tagbag.set(messageTag, wason => {
     const { status, ref, ttl, update, curr, time } = JSON.parse(wason)
@@ -33,8 +35,8 @@ wsc.once('open', el => {
     console.dir({ status, ref, ttl, update, curr, time })
 
     const seed = crypto.randomBytes(32)
-    const key = generateKeyPair(seed)
-    const publickey = Buffer.from(key.public).toString('base64')
+    const keys = curve25519.generateKeyPair(seed)
+    const publickey = Buffer.from(keys.public).toString('base64')
     const code = `${ref},${publickey},${clientId}`
 
     qrcode.generate(code, { small: true })

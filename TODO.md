@@ -1,0 +1,3 @@
+- [ ] gerar chaves
+- [ ] restaurar sessao
+- [ ] novo qrcode `json: ['admin', 'Conn', 'reref']`
