@@ -12,6 +12,8 @@ let authInfo
 const clientId = crypto.randomBytes(16).toString('base64')
 const inittag = crypto.randomBytes(16).toString('base64')
 
+let tagadmintest
+
 const WSC = new WebSocket(zapurl, {
   origin,
   headers
@@ -125,6 +127,17 @@ WSC.once('open', el => {
   const cmd = JSON.stringify(['admin', 'init', whatswebVersion, whatswebBrowser, clientId, notincognito])
   const initcmd = `${inittag},${cmd}`
   logger.log('info', `--> ${initcmd}`)
+
+  setInterval(() => {
+    console.log('?,,')
+    WSC.send('?,,')
+  }, keepAliveInterval)
+
+  setInterval(() => {
+    tagadmintest = crypto.randomBytes(16).toString('base64')
+    WSC.send(`${tagadmintest},${JSON.stringify(['admin', 'test'])}`)
+    console.log(`admintest=${tagadmintest}`)
+  }, adminTestInterval)
 
   WSC.send(initcmd)
 })

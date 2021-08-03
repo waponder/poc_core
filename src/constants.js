@@ -13,7 +13,7 @@ const headers = {
   Upgrade: 'websocket'
 }
 
-const keepAliveInterval = 20_1000
+const keepAliveInterval = 20_000
 const adminTestInterval = 15_000
 
 module.exports = {
