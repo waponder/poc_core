@@ -1,3 +1,6 @@
+- [ ]  once('open')
+    - [ ] KEEP_ALIVE_INTERVAL_MS this.send('?,,')
+    - [ ] connectOptions.phoneResponseTime this.sendJSON (['admin', 'test'])
 - [ ] gerar chaves
 - [ ] restaurar sessao
 - [ ] novo qrcode `json: ['admin', 'Conn', 'reref']`
