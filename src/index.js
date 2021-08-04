@@ -4,15 +4,14 @@ const curve25519 = require('curve25519-js')
 const HKDF = require('futoin-hkdf')
 const qrcode = require('qrcode-terminal')
 
-const { adminTestInterval, headers, origin, whatswebBrowser, whatswebVersion, keepAliveInterval, zapurl } = require('./constants')
+const { clientId, adminTestInterval, headers, origin, keepAliveInterval, zapurl, qrcodeTimeToLive, recodecmd, initcmd, inittag } = require('./constants')
 const logger = require('./logger')
 
+let qrcodeloodid
 let curveKeys
 let authInfo
-const clientId = crypto.randomBytes(16).toString('base64')
-const inittag = crypto.randomBytes(16).toString('base64')
-
-let tagadmintest
+let recodetag
+let qrcodetotal = 1
 
 const WSC = new WebSocket(zapurl, {
   origin,
@@ -37,6 +36,20 @@ WSC.on('message', el => {
       logger.log('info', 'inittag')
       curveKeys = curve25519.generateKeyPair(crypto.randomBytes(32))
       qrcode.generate(`${wason.ref},${Buffer.from(curveKeys.public).toString('base64')},${clientId}`, { small: true })
+      qrcodeloodid = setInterval(() => {
+        recodetag = crypto.randomBytes(16).toString('base64')
+        logger.log('info', 'recode')
+        WSC.send(`${recodetag},${recodecmd}`)
+      }, qrcodeTimeToLive)
+
+      break
+    case recodetag:
+      logger.log('info', `recodetag=${recodetag}`)
+      qrcode.generate(`${wason.ref},${Buffer.from(curveKeys.public).toString('base64')},${clientId}`, { small: true })
+      qrcodetotal = qrcodetotal + 1
+      if (qrcode > 5) {
+        clearInterval(qrcodeloodid)
+      }
       break
     case 's1':
       if (Array.isArray(wason) && wason.length === 2 && wason[0] === 'Conn') {
@@ -63,6 +76,8 @@ WSC.on('message', el => {
           pushname,
           tos
         } = wason[1]
+
+        clearInterval(qrcodeloodid)
 
         // OPA CONN
         logger.log('info', 'OPA CONN')
@@ -115,31 +130,25 @@ WSC.on('message', el => {
       logger.log('info', el.toString())
       break
     default:
-      logger.log('info', `<-- ${mtag}`)
+      logger.log('info', `${mtag} ?`)
   }
 })
 
 WSC.once('open', el => {
-  logger.log('info', 'w open')
-
   // autostart
-  const notincognito = true
-  const cmd = JSON.stringify(['admin', 'init', whatswebVersion, whatswebBrowser, clientId, notincognito])
-  const initcmd = `${inittag},${cmd}`
-  logger.log('info', `--> ${initcmd}`)
+  logger.log('info', `w open ${initcmd}`)
+  WSC.send(`${inittag},${initcmd}`)
 
   setInterval(() => {
-    console.log('?,,')
+    console.log('info', `${keepAliveInterval} ?,,`)
     WSC.send('?,,')
   }, keepAliveInterval)
 
   setInterval(() => {
-    tagadmintest = crypto.randomBytes(16).toString('base64')
-    WSC.send(`${tagadmintest},${JSON.stringify(['admin', 'test'])}`)
-    console.log(`admintest=${tagadmintest}`)
+    const admintesttag = crypto.randomBytes(16).toString('base64')
+    WSC.send(`${admintesttag},${JSON.stringify(['admin', 'test'])}`)
+    console.log('info', `${adminTestInterval} admintest`)
   }, adminTestInterval)
-
-  WSC.send(initcmd)
 })
 
 WSC.on('close', el => {
