@@ -25,9 +25,13 @@ const inittag = crypto.randomBytes(16).toString('base64')
 const recodecmd = JSON.stringify(['admin', 'Conn', 'reref'])
 const notincognito = true
 const initcmd = JSON.stringify(['admin', 'init', whatswebVersion, whatswebBrowser, clientId, notincognito])
+const mktakeovercmd = ({ clientId, clientToken, serverToken }) => JSON.stringify(['admin', 'login', clientToken, serverToken, clientId, 'takeover'])
+const mkchallengecmd = ({ signedChallenge, serverToken, clientID }) => JSON.stringify(['admin', 'challenge', signedChallenge, serverToken, clientID])
 
 module.exports = {
   clientId,
+  mktakeovercmd,
+  mkchallengecmd,
   adminTestInterval,
   whatswebVersion,
   whatswebBrowser,
